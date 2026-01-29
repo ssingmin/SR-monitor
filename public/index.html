@@ -2,332 +2,156 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Signal Monitor (Tagged CSV)</title>
+    <title>Smart Parsing Monitor</title>
     <style>
-        /* === 전체 레이아웃 === */
+        /* === 스타일은 기존과 동일 === */
         * { box-sizing: border-box; }
-        body { 
-            margin: 0; padding: 10px; 
-            font-family: 'Segoe UI', sans-serif; 
-            background: #f4f6f9; 
-            height: 100vh; 
-            display: flex; flex-direction: column; gap: 10px; 
-            min-width: 900px; 
-        }
-
-        /* 박스 공통 스타일 */
-        .box { 
-            background: white; 
-            border: 1px solid #ccc; 
-            border-radius: 4px; 
-            padding: 10px; 
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1); 
-            transition: all 0.3s ease; 
-        }
-        
-        /* 비활성화 스타일 */
-        .disabled-state {
-            background-color: #f9f9f9 !important;
-            filter: grayscale(100%);
-            opacity: 0.6;
-            pointer-events: none;
-        }
-
-        /* 1. 상단: 그래프 */
+        body { margin: 0; padding: 10px; font-family: 'Segoe UI', sans-serif; background: #f4f6f9; height: 100vh; display: flex; flex-direction: column; gap: 10px; min-width: 900px; }
+        .box { background: white; border: 1px solid #ccc; border-radius: 4px; padding: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .disabled-state { background-color: #f9f9f9 !important; filter: grayscale(100%); opacity: 0.6; pointer-events: none; }
         .section-graph { flex: 7; position: relative; min-height: 0; }
-
-        /* 2. 중단: 테이블 */
         .section-table { flex: 2; display: flex; flex-direction: column; overflow: hidden; }
         .table-scroll { overflow-x: auto; height: 100%; border: 1px solid #ddd; }
         table { width: 100%; border-collapse: collapse; text-align: center; table-layout: fixed; min-width: 700px; }
         th, td { border: 1px solid #ccc; padding: 6px; font-size: 13px; }
         td:first-child, th:first-child { background: #e9ecef; font-weight: bold; width: 80px; }
         thead th { background: #eaeff5; position: sticky; top: 0; }
-        
-        /* 3. 하단: 버튼 영역 */
-        .section-footer { 
-            flex: 1; display: flex; align-items: center; justify-content: space-between; 
-            gap: 10px; width: 100%;
-        }
-        .footer-left, .footer-right { flex: 0 0 auto; }
-        
-        /* 중앙 테스트 패널 */
-        .footer-center { 
-            display: none; flex: 1; align-items: center;
-            background: #fff; border: 1px solid #ccc; border-radius: 4px;
-            padding: 5px 10px; height: 100%; gap: 10px; min-width: 0; 
-        }
-
-        /* 10칸 그리드 */
-        .input-grid-container {
-            display: grid; grid-template-columns: repeat(10, 1fr); gap: 5px; width: 100%; 
-        }
-        .test-input { 
-            width: 100%; text-align: center; border: 1px solid #ddd; 
-            border-radius: 3px; padding: 5px 0; font-size: 13px; font-weight: bold; color: #333;
-        }
-        .test-input:focus { border-color: #4CAF50; outline: 2px solid #a5d6a7; }
-
-        /* 버튼 디자인 */
-        button { 
-            height: 40px; padding: 0 15px; font-weight: bold; cursor: pointer; 
-            border: 1px solid #999; background: white; border-radius: 4px; white-space: nowrap; 
-        }
+        .section-footer { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; }
+        .footer-center { display: none; flex: 1; align-items: center; background: #fff; border: 1px solid #ccc; border-radius: 4px; padding: 5px 10px; height: 100%; gap: 10px; }
+        .input-grid-container { display: grid; grid-template-columns: repeat(10, 1fr); gap: 5px; width: 100%; }
+        .test-input { width: 100%; text-align: center; border: 1px solid #ddd; border-radius: 3px; padding: 5px 0; font-weight: bold; }
+        button { height: 40px; padding: 0 15px; font-weight: bold; cursor: pointer; border: 1px solid #999; background: white; border-radius: 4px; }
         button:hover { background: #eee; }
-
-        #btnSend { background-color: #ff9800; color: white; border: none; padding: 0 25px; }
-        #btnSend:hover { background-color: #f57c00; }
-        
+        #btnSend { background-color: #ff9800; color: white; border: none; }
         .btn-connected { border-left: 5px solid #4CAF50 !important; color: #2e7d32 !important; background-color: white !important; }
         .btn-disconnected { border-left: 5px solid #999 !important; color: #888 !important; background-color: #f0f0f0 !important; }
         #btnExport { border-right: 5px solid #008CBA; }
-
-        /* 팝업 스타일 */
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
         .modal-window { background: white; width: 400px; padding: 20px; border-radius: 8px; display: flex; flex-direction: column; gap: 15px; }
         .modal-header { font-size: 18px; font-weight: bold; text-align: center; border-bottom: 2px solid #eee; padding-bottom: 10px; }
         .modal-footer { display: flex; justify-content: space-between; margin-top: 10px; }
         .modal-footer button { width: 45%; }
         .btn-ok { background-color: #007bff; color: white; border: none; }
-        
         .port-list { list-style: none; padding: 0; margin: 0; border: 1px solid #ddd; max-height: 200px; overflow-y: auto; }
         .port-item { padding: 10px; cursor: pointer; border-bottom: 1px solid #eee; }
-        .port-item:hover { background-color: #f0f8ff; }
         .port-item.selected { background-color: #007bff; color: white; }
-
-        .save-input-group { display: flex; flex-direction: column; gap: 5px; }
-        .save-input-group label { font-size: 13px; font-weight: bold; color: #555; }
-        .save-filename { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+        .save-filename { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
     </style>
 </head>
 <body>
-
-    <div class="box section-graph disabled-state" id="graphArea">
-        <canvas id="myChart"></canvas>
-    </div>
-
+    <div class="box section-graph disabled-state" id="graphArea"><canvas id="myChart"></canvas></div>
     <div class="box section-table disabled-state" id="tableArea">
-        <div style="font-weight:bold; margin-bottom:5px;">:: 측정 데이터</div>
+        <div style="font-weight:bold; margin-bottom:5px;">:: Pulse Width 데이터 (10개씩 갱신)</div>
         <div class="table-scroll">
             <table id="dataTable">
-                <thead>
-                    <tr><th>ID</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th></tr>
-                </thead>
-                <tbody>
-                    <tr id="dataRow"><td>값</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
-                </tbody>
+                <thead><tr><th>ID</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th></tr></thead>
+                <tbody><tr id="dataRow"><td>값(ms)</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr></tbody>
             </table>
         </div>
     </div>
-
     <div class="section-footer">
-        <div class="footer-left">
-            <button id="btnPort" class="btn-disconnected">⚙️ 포트 연결</button>
-        </div>
-
+        <div class="footer-left"><button id="btnPort" class="btn-disconnected">⚙️ 포트 연결</button></div>
         <div class="footer-center" id="testPanel">
             <div class="input-grid-container">
-                <input type="number" class="test-input" value="10">
-                <input type="number" class="test-input" value="20">
-                <input type="number" class="test-input" value="30">
-                <input type="number" class="test-input" value="40">
-                <input type="number" class="test-input" value="50">
-                <input type="number" class="test-input" value="60">
-                <input type="number" class="test-input" value="70">
-                <input type="number" class="test-input" value="80">
-                <input type="number" class="test-input" value="90">
-                <input type="number" class="test-input" value="100">
+                <input type="number" class="test-input" value="10"><input type="number" class="test-input" value="20"><input type="number" class="test-input" value="30"><input type="number" class="test-input" value="40"><input type="number" class="test-input" value="50"><input type="number" class="test-input" value="60"><input type="number" class="test-input" value="70"><input type="number" class="test-input" value="80"><input type="number" class="test-input" value="90"><input type="number" class="test-input" value="100">
             </div>
             <button id="btnSend">📤 SEND</button>
         </div>
-
-        <div class="footer-right">
-            <button id="btnExport">💾 로그 저장</button>
-        </div>
+        <div class="footer-right"><button id="btnExport">💾 로그 저장</button></div>
     </div>
 
     <div class="modal-overlay" id="portModal">
         <div class="modal-window">
-            <div class="modal-header">포트 설정 (Baud: 115200)</div>
+            <div class="modal-header">포트 설정</div>
             <ul class="port-list" id="portList"></ul>
-            <div class="modal-footer">
-                <button class="btn-cancel" id="btnPortCancel">Cancel</button>
-                <button class="btn-ok" id="btnPortOk">OK</button>
-            </div>
+            <div class="modal-footer"><button class="btn-cancel" id="btnPortCancel">Cancel</button><button class="btn-ok" id="btnPortOk">OK</button></div>
         </div>
     </div>
-
     <div class="modal-overlay" id="saveModal">
         <div class="modal-window">
-            <div class="modal-header">로그 저장 설정</div>
-            <div class="save-input-group">
-                <label>파일 이름 (자동 생성됨)</label>
-                <input type="text" class="save-filename" id="fileNameInput" value="log_data">
-            </div>
-            <div style="font-size: 12px; color: #666; background: #f1f1f1; padding: 10px; border-radius: 4px;">
-                ℹ️ <b>[TEST]</b> 모드인 경우, 데이터 끝에 'TEST' 태그가 자동으로 붙습니다.
-            </div>
-            <div class="modal-footer">
-                <button class="btn-cancel" id="btnSaveCancel">Cancel</button>
-                <button class="btn-ok" id="btnSaveOk">저장 (Save)</button>
-            </div>
+            <div class="modal-header">로그 저장</div>
+            <div><label>파일 이름</label><input type="text" class="save-filename" id="fileNameInput" value="log_data"></div>
+            <div style="font-size:12px; color:#666;">ℹ️ 연결을 끊어도 데이터는 유지됩니다.</div>
+            <div class="modal-footer"><button class="btn-cancel" id="btnSaveCancel">Cancel</button><button class="btn-ok" id="btnSaveOk">저장</button></div>
         </div>
     </div>
 
     <script src="./jquery.min.js"></script>
     <script src="./chart.min.js"></script>
-
     <script>
         const ctx = document.getElementById('myChart');
         const myChart = new Chart(ctx, {
             type: 'bar',
-            data: {
-                labels: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'], 
-                datasets: [{ label: 'Sensor Data', data: [0,0,0,0,0,0,0,0,0,0], backgroundColor: '#4472C4' }]
-            },
-            options: { responsive: true, maintainAspectRatio: false }
+            data: { labels: ['1','2','3','4','5','6','7','8','9','10'], datasets: [{ label: 'Pulse Width (ms)', data: [0,0,0,0,0,0,0,0,0,0], backgroundColor: '#4472C4' }] },
+            options: { responsive: true, maintainAspectRatio: false, animation: { duration: 0 } }
         });
 
-        // === 전역 변수 ===
-        let isConnected = false; 
-        let selectedPort = null;
-        let logBuffer = []; 
+        let isConnected = false; let selectedPort = null; let logBuffer = []; let eventSource = null;
 
         function toggleUI(connected) {
             if (connected) {
                 $('#graphArea, #tableArea').removeClass('disabled-state');
-                $('#btnPort').removeClass('btn-disconnected').addClass('btn-connected');
-                $('#btnPort').text('✅ 연결됨: ' + selectedPort);
-
-                if(selectedPort.includes('TEST')) {
-                    $('#testPanel').css('display', 'flex');
-                } else {
+                $('#btnPort').removeClass('btn-disconnected').addClass('btn-connected').text('✅ 연결됨: ' + selectedPort);
+                if(selectedPort.includes('TEST')) { $('#testPanel').css('display', 'flex'); }
+                else {
                     $('#testPanel').hide();
+                    if(eventSource) eventSource.close();
+                    eventSource = new EventSource('/api/stream');
+                    eventSource.onmessage = function(event) {
+                        const valArray = event.data.split(',').map(Number);
+                        if(valArray.length === 10) updateGraphAndTable(valArray);
+                    };
                 }
             } else {
                 $('#graphArea, #tableArea').addClass('disabled-state');
                 $('#testPanel').hide();
-                $('#btnPort').removeClass('btn-connected').addClass('btn-disconnected');
-                $('#btnPort').text('⚙️ 포트 연결 (해제됨)');
+                $('#btnPort').removeClass('btn-connected').addClass('btn-disconnected').text('⚙️ 포트 연결 (해제됨)');
+                if(eventSource) { eventSource.close(); eventSource = null; }
             }
         }
 
-        // [이벤트 1] 포트 버튼
-        $('#btnPort').click(function() {
-            if (isConnected) {
-                if(confirm('연결을 종료하시겠습니까?')) {
-                    isConnected = false;
-                    toggleUI(false);
-                    logBuffer = []; // 연결 해제 시 버퍼 초기화
-                }
-            } else {
-                const ports = ['TEST (Virtual Mode)', 'COM1', 'COM2', 'COM3'];
-                const $list = $('#portList');
-                $list.empty();
-                ports.forEach(port => $list.append(`<li class="port-item">${port}</li>`));
-                $('#portModal').css('display', 'flex');
-            }
-        });
-
-        // [이벤트 2] SEND 버튼 (데이터 생성)
-        $('#btnSend').click(function() {
-            if(!isConnected) return;
-            
-            // 1. 값 읽기
-            let newValues = [];
-            $('.test-input').each(function() {
-                newValues.push(Number($(this).val()) || 0);
-            });
-
-            // 2. 그래프 업데이트
+        function updateGraphAndTable(newValues) {
             myChart.data.datasets[0].data = newValues;
             myChart.update();
-            $('#dataRow td').each(function(index) {
-                if (index > 0) $(this).text(newValues[index - 1]);
-            });
-
-            // 3. 로그 저장 (태그 로직 적용)
+            $('#dataRow td').each(function(index) { if (index > 0) $(this).text(newValues[index - 1]); });
             const timestamp = new Date().toLocaleString();
-            
-            // [핵심 로직] 현재 포트가 'TEST'가 포함되어 있으면 태그 붙임, 아니면 빈 문자열
-            const isTestMode = selectedPort && selectedPort.includes('TEST');
-            const dataTag = isTestMode ? 'TEST' : ''; // 실제 포트면 빈칸
+            const tag = (selectedPort && selectedPort.includes('TEST')) ? 'TEST' : '';
+            logBuffer.push({ time: timestamp, values: newValues, tag: tag });
+        }
 
-            logBuffer.push({ 
-                time: timestamp, 
-                values: newValues,
-                tag: dataTag // 저장될 태그
+        $('#btnPort').click(function() {
+            if (isConnected) {
+                if(confirm('연결을 종료하시겠습니까? (데이터 유지됨)')) { isConnected = false; toggleUI(false); }
+            } else {
+                $.ajax({ url: '/api/ports', method: 'GET', success: function(ports) {
+                    const $list = $('#portList'); $list.empty();
+                    $list.append(`<li class="port-item">TEST (Virtual Mode)</li>`);
+                    ports.forEach(p => $list.append(`<li class="port-item">${p}</li>`));
+                    $('#portModal').css('display', 'flex');
+                }, error: function() { alert('서버 연결 실패'); } });
+            }
+        });
+
+        $(document).on('click', '.port-item', function() { $('.port-item').removeClass('selected'); $(this).addClass('selected'); selectedPort = $(this).text(); });
+        $('#btnPortOk').click(function() {
+            if (!selectedPort) { alert('포트 선택!'); return; }
+            $('#portModal').hide();
+            $.ajax({ url: '/api/connect', method: 'POST', contentType: 'application/json', data: JSON.stringify({ port: selectedPort }),
+                success: function(res) { alert(res.message); logBuffer = []; isConnected = true; toggleUI(true); },
+                error: function() { alert('장치 연결 실패'); }
             });
-            console.log(`Log saved: ${logBuffer.length} items (Tag: ${dataTag})`);
         });
 
-        // [이벤트 3] 로그 저장
-        $('#btnExport').click(function() {
-            const now = new Date();
-            const defaultName = `log_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
-            $('#fileNameInput').val(defaultName);
-            $('#saveModal').css('display', 'flex');
-        });
-
-        // 팝업 닫기
-        $('#btnSaveCancel').click(() => $('#saveModal').hide());
-        $('#btnPortCancel').click(() => $('#portModal').hide());
-
-        // [이벤트 4] 파일 저장 실행 (CSV 생성)
+        $('#btnSend').click(function() { if(!isConnected) return; let vals = []; $('.test-input').each(function() { vals.push(Number($(this).val()) || 0); }); updateGraphAndTable(vals); });
+        $('#btnExport').click(function() { const now = new Date(); $('#fileNameInput').val(`log_${now.getTime()}`); $('#saveModal').css('display', 'flex'); });
+        $('#btnSaveCancel').click(() => $('#saveModal').hide()); $('#btnPortCancel').click(() => $('#portModal').hide());
         $('#btnSaveOk').click(function() {
             const fileName = $('#fileNameInput').val() || 'log_data';
-            
-            if (logBuffer.length === 0) {
-                alert("저장할 데이터가 없습니다.");
-                $('#saveModal').hide();
-                return;
-            }
-
-            // 1. 헤더 생성 (맨 끝에 Mode 추가)
-            let csvContent = "Time,CH1,CH2,CH3,CH4,CH5,CH6,CH7,CH8,CH9,CH10,Mode\n";
-            
-            // 2. 데이터 행 생성
-            logBuffer.forEach(row => {
-                // 시간, 값(1~10), 태그(TEST or 빈칸) 순서로 조합
-                // 예: "2026.1.29..., 10, 20..., TEST"
-                csvContent += `${row.time},${row.values.join(',')},${row.tag}\n`;
-            });
-
-            const blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a");
-            const url = URL.createObjectURL(blob);
-            link.setAttribute("href", url);
-            link.setAttribute("download", fileName + ".csv");
-            link.style.visibility = 'hidden';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-
-            $('#saveModal').hide();
-            alert(`저장 완료! (${logBuffer.length}건)`);
-        });
-
-        // 포트 설정 OK 로직
-        $(document).on('click', '.port-item', function() {
-            $('.port-item').removeClass('selected');
-            $(this).addClass('selected');
-            selectedPort = $(this).text();
-        });
-        $('#btnPortOk').click(function() {
-            if (!selectedPort) { alert('포트를 선택해주세요!'); return; }
-            $('#portModal').hide();
-            $.ajax({
-                url: '/api/connect',
-                method: 'POST',
-                contentType: 'application/json',
-                data: JSON.stringify({ port: selectedPort }),
-                success: function(res) {
-                    alert(res.message);
-                    isConnected = true;
-                    toggleUI(true);
-                },
-                error: function() { alert('서버 연결 실패'); }
-            });
+            if (logBuffer.length === 0) { alert("저장할 데이터가 없습니다."); return; }
+            let csv = "Time,CH1,CH2,CH3,CH4,CH5,CH6,CH7,CH8,CH9,CH10,Mode\n";
+            logBuffer.forEach(r => csv += `${r.time},${r.values.join(',')},${r.tag}\n`);
+            const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = fileName + ".csv"; link.click(); $('#saveModal').hide();
         });
     </script>
 </body>
