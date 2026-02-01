@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SR Monitor (Final)</title>
+    <title>SR Monitor (Fixed Layout)</title>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -14,14 +14,14 @@
         .box { background: white; border: 1px solid #ccc; border-radius: 4px; padding: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         .disabled-state { background-color: #f9f9f9 !important; filter: grayscale(100%); opacity: 0.6; pointer-events: none; }
         
-        /* ★ [수정됨] 높이 비율 복구 (PC 버전처럼 시원하게) */
+        /* ★ [수정됨] 높이 비율 변경 (그래프 크게, 테이블 작게) */
         .section-graph { 
-            flex: 1; /* 그래프와 테이블이 화면을 반반씩 차지하도록 변경 */
+            flex: 3; /* 기존 1에서 3으로 변경 (화면의 약 75%) */
             position: relative; 
-            min-height: 0; /* Flexbox 버그 방지 */
+            min-height: 0; 
         }
         .section-table { 
-            flex: 1; /* 테이블 영역을 넓게 확보 */
+            flex: 1; /* 기존 1에서 1 유지 (화면의 약 25% - 절반으로 줄어듬) */
             display: flex; flex-direction: column; overflow: hidden; gap: 0; padding-bottom: 0; 
         } 
         
@@ -187,19 +187,35 @@
             displayData.fill(0); displayTimes.fill('-'); currentIndex = 0; logBuffer = [];
             updateGraphAndTable(); progressBar.style.width = '0%'; miniTimerDisplay.innerText = "0 ms";
         }
+
         function pushData(newValue) {
-            const now = new Date(); const timeStr = now.toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            displayData[currentIndex] = newValue; displayTimes[currentIndex] = timeStr;
+            // ★ [핵심 수정] 1번(인덱스 0)으로 돌아올 때 기존 데이터 싹 비우기
+            if (currentIndex === 0) {
+                displayData.fill(0);
+                displayTimes.fill('-');
+            }
+
+            const now = new Date(); 
+            const timeStr = now.toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            
+            displayData[currentIndex] = newValue; 
+            displayTimes[currentIndex] = timeStr;
             logBuffer.push({ id: logBuffer.length+1, time: now.toLocaleString(), value: newValue, mode: currentMode });
-            updateGraphAndTable(); currentIndex++; if (currentIndex >= 10) currentIndex = 0;
+            
+            updateGraphAndTable(); 
+            
+            currentIndex++; 
+            if (currentIndex >= 10) currentIndex = 0; // 10개 채우면 다시 0번으로
         }
         
-        // ★ 하이라이트 로직 (수정됨)
+        // ★ 하이라이트 로직
         function updateGraphAndTable() {
             myChart.data.datasets[0].data = [...displayData]; myChart.update();
             const timeCells = document.getElementById('timeRow').children; const dataCells = document.getElementById('dataRow').children;
             for(let i=1; i<=10; i++) {
                 timeCells[i].innerText = displayTimes[i-1]; dataCells[i].innerText = displayData[i-1];
+                
+                // 데이터가 하나라도 있고, 현재 방금 입력한 인덱스와 일치하면 강조
                 if((i - 1 === currentIndex) && (logBuffer.length > 0)) {
                     timeCells[i].classList.add('active-cell'); dataCells[i].classList.add('active-cell');
                 } else {
@@ -210,7 +226,6 @@
 
         // === 버튼 이벤트 ===
         $('#btnConnect').click(connectSerial); $('#btnDisconnect').click(disconnectAll);
-        // 리셋 버튼 삭제됨
         $('#btnExport').click(function() { if (logBuffer.length === 0) return alert("저장할 데이터가 없습니다."); const now = new Date(); const fileName = `log_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`; let csv = "No,Time,Pulse(ms),Mode\n"; logBuffer.forEach(r => { csv += `${r.id},${r.time},${r.value},${r.mode}\n`; }); const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = fileName + ".csv"; link.click(); });
     </script>
 </body>
