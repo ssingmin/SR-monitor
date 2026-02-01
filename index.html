@@ -3,19 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SR Monitor (Web Serial)</title>
+    <title>SR Monitor (Final)</title>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        /* === 스타일 (기존과 동일) === */
+        /* === 기본 스타일 === */
         * { box-sizing: border-box; }
         body { margin: 0; padding: 10px; font-family: 'Segoe UI', sans-serif; background: #f4f6f9; height: 100vh; display: flex; flex-direction: column; gap: 10px; }
         
         .box { background: white; border: 1px solid #ccc; border-radius: 4px; padding: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         .disabled-state { background-color: #f9f9f9 !important; filter: grayscale(100%); opacity: 0.6; pointer-events: none; }
         
-        .section-graph { flex: 6; position: relative; min-height: 200px; }
-        .section-table { flex: 4; display: flex; flex-direction: column; overflow: hidden; gap: 0; padding-bottom: 0; } 
+        /* ★ [수정됨] 높이 비율 복구 (PC 버전처럼 시원하게) */
+        .section-graph { 
+            flex: 1; /* 그래프와 테이블이 화면을 반반씩 차지하도록 변경 */
+            position: relative; 
+            min-height: 0; /* Flexbox 버그 방지 */
+        }
+        .section-table { 
+            flex: 1; /* 테이블 영역을 넓게 확보 */
+            display: flex; flex-direction: column; overflow: hidden; gap: 0; padding-bottom: 0; 
+        } 
+        
         .table-scroll { flex: 1; overflow: auto; border: 1px solid #ddd; display: flex; flex-direction: column; }
         
         table { width: 100%; height: 100%; border-collapse: collapse; text-align: center; table-layout: fixed; min-width: 600px; }
@@ -48,7 +57,6 @@
         #btnTestMode { border-left: 5px solid #ff9800; color: #e65100; }
         #btnDisconnect { background-color: #6c757d; color: white; border: none; display: none; }
         #btnExport { border-right: 5px solid #17a2b8; color: #006064; }
-        #btnReset { border-right: 5px solid #d32f2f; color: #c62828; }
 
         #btnManualTrigger { background-color: #607d8b; color: white; border: none; width: 100%; max-width: 200px; box-shadow: 0 4px #455a64; transform: translateY(0); }
         #btnManualTrigger:active, #btnManualTrigger.remote-active { background-color: #ff5722 !important; box-shadow: 0 0 #d84315 !important; transform: translateY(4px) !important; }
@@ -59,7 +67,10 @@
     </style>
 </head>
 <body>
-    <div class="box section-graph disabled-state" id="graphArea"><canvas id="myChart"></canvas></div>
+    <div class="box section-graph disabled-state" id="graphArea">
+        <canvas id="myChart"></canvas>
+    </div>
+
     <div class="box section-table disabled-state" id="tableArea">
         <div class="table-scroll">
             <table id="dataTable">
@@ -72,12 +83,14 @@
         </div>
         <div class="stopwatch-panel"><div id="progressBar" class="progress-bar"></div></div>
     </div>
+
     <div class="section-footer">
         <div style="display: flex; gap: 5px;">
             <button id="btnConnect">🔌 장치 연결</button>
             <button id="btnTestMode">🧪 테스트</button>
             <button id="btnDisconnect">❌ 종료</button>
         </div>
+        
         <div class="footer-center" id="footerCenter">
             <div id="panelTestMode"><button id="btnManualTrigger">🖱️ 꾹 누르세요</button></div>
             <div id="panelArduinoMode">
@@ -85,15 +98,17 @@
                     <span class="status-dot" id="statusDot"></span><span id="statusText">신호 대기...</span>
                 </span>
             </div>
-            <div style="width: 1px; height: 20px; background: #ddd;"></div><span id="miniTimerDisplay" class="mini-timer">0 ms</span>
+            <div style="width: 1px; height: 20px; background: #ddd;"></div>
+            <span id="miniTimerDisplay" class="mini-timer">0 ms</span>
         </div>
+
         <div style="display: flex; gap: 5px;">
-            <button id="btnReset">🔄 리셋</button>
             <button id="btnExport">💾 저장</button>
         </div>
     </div>
 
     <script>
+        // === 차트 설정 ===
         const ctx = document.getElementById('myChart');
         Chart.defaults.font.size = 14; 
         const myChart = new Chart(ctx, {
@@ -102,7 +117,8 @@
             options: { responsive: true, maintainAspectRatio: false, animation: { duration: 0 } }
         });
 
-        let port, reader, inputDone, outputStream, inputStream;
+        // === 변수 선언 ===
+        let port, reader, inputDone;
         let isConnected = false; let currentMode = 'NONE';
         let logBuffer = []; let displayData = [0,0,0,0,0,0,0,0,0,0]; let displayTimes = ['-','-','-','-','-','-','-','-','-','-'];
         let currentIndex = 0; let serialBuffer = "";
@@ -110,6 +126,7 @@
         const progressBar = document.getElementById('progressBar'); const miniTimerDisplay = document.getElementById('miniTimerDisplay');
         const statusDot = document.getElementById('statusDot'); const statusText = document.getElementById('statusText'); const btnTrigger = document.getElementById('btnManualTrigger');
 
+        // === 모드 설정 ===
         function setMode(mode) {
             currentMode = mode;
             if (mode === 'NONE') {
@@ -123,6 +140,7 @@
             }
         }
 
+        // === Web Serial 연결 ===
         async function connectSerial() {
             if (!("serial" in navigator)) return alert("Web Serial 미지원 브라우저입니다.");
             try {
@@ -135,6 +153,8 @@
             if (currentMode === 'USB') { if (reader) { await reader.cancel(); await inputDone.catch(() => {}); reader = null; inputDone = null; } if (port) { await port.close(); port = null; } }
             isConnected = false; setMode('NONE');
         }
+
+        // === 데이터 수신 루프 ===
         async function readLoop() {
             while (true) {
                 const { value, done } = await reader.read(); if (done) { reader.releaseLock(); break; }
@@ -142,6 +162,7 @@
             }
         }
 
+        // === UI 동작 (측정 시작/종료) ===
         function startMeasurementUI() {
             if (startTime !== 0) return; startTime = Date.now(); currentMaxScale = 2000;
             if(currentMode === 'USB') { statusDot.classList.add('active'); statusText.innerText = "측정 중..."; } else { btnTrigger.classList.add('remote-active'); btnTrigger.innerText = "측정 중..."; }
@@ -155,11 +176,13 @@
             pushData(finalValue);
         }
 
+        // === 테스트 모드 버튼 이벤트 ===
         $('#btnTestMode').click(function() { setMode('TEST'); });
         btnTrigger.addEventListener('mousedown', startMeasurementUI); btnTrigger.addEventListener('touchstart', function(e) { e.preventDefault(); startMeasurementUI(); });
         function finishTestTrigger() { if (startTime === 0 || currentMode !== 'TEST') return; const duration = Date.now() - startTime; stopMeasurementUI(duration); }
         btnTrigger.addEventListener('mouseup', finishTestTrigger); btnTrigger.addEventListener('mouseleave', finishTestTrigger); btnTrigger.addEventListener('touchend', finishTestTrigger);
 
+        // === 데이터 저장 및 화면 갱신 ===
         function resetUI() {
             displayData.fill(0); displayTimes.fill('-'); currentIndex = 0; logBuffer = [];
             updateGraphAndTable(); progressBar.style.width = '0%'; miniTimerDisplay.innerText = "0 ms";
@@ -171,13 +194,12 @@
             updateGraphAndTable(); currentIndex++; if (currentIndex >= 10) currentIndex = 0;
         }
         
-        // ★★★ [핵심 수정] 하이라이트 로직 수정 ★★★
+        // ★ 하이라이트 로직 (수정됨)
         function updateGraphAndTable() {
             myChart.data.datasets[0].data = [...displayData]; myChart.update();
             const timeCells = document.getElementById('timeRow').children; const dataCells = document.getElementById('dataRow').children;
             for(let i=1; i<=10; i++) {
                 timeCells[i].innerText = displayTimes[i-1]; dataCells[i].innerText = displayData[i-1];
-                // 수정된 조건: 현재 인덱스와 일치하고, 데이터가 하나라도 들어온 상태일 때만 하이라이트
                 if((i - 1 === currentIndex) && (logBuffer.length > 0)) {
                     timeCells[i].classList.add('active-cell'); dataCells[i].classList.add('active-cell');
                 } else {
@@ -186,7 +208,9 @@
             }
         }
 
-        $('#btnConnect').click(connectSerial); $('#btnDisconnect').click(disconnectAll); $('#btnReset').click(resetUI);
+        // === 버튼 이벤트 ===
+        $('#btnConnect').click(connectSerial); $('#btnDisconnect').click(disconnectAll);
+        // 리셋 버튼 삭제됨
         $('#btnExport').click(function() { if (logBuffer.length === 0) return alert("저장할 데이터가 없습니다."); const now = new Date(); const fileName = `log_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`; let csv = "No,Time,Pulse(ms),Mode\n"; logBuffer.forEach(r => { csv += `${r.id},${r.time},${r.value},${r.mode}\n`; }); const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = fileName + ".csv"; link.click(); });
     </script>
 </body>
