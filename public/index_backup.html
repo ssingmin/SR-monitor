@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Real-Time Signal Monitor</title>
+    <style>
+        /* (기본 스타일 유지) */
+        * { box-sizing: border-box; }
+        body { margin: 0; padding: 10px; font-family: 'Segoe UI', sans-serif; background: #f4f6f9; height: 100vh; display: flex; flex-direction: column; gap: 10px; min-width: 900px; }
+        .box { background: white; border: 1px solid #ccc; border-radius: 4px; padding: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .disabled-state { background-color: #f9f9f9 !important; filter: grayscale(100%); opacity: 0.6; pointer-events: none; }
+        
+        .section-graph { flex: 7; position: relative; min-height: 0; }
+        .section-table { flex: 3; display: flex; flex-direction: column; overflow: hidden; gap: 0; padding-bottom: 0; } 
+        .table-scroll { flex: 1; overflow-x: auto; border: 1px solid #ddd; display: flex; flex-direction: column; }
+        
+        table { width: 100%; height: 100%; border-collapse: collapse; text-align: center; table-layout: fixed; min-width: 700px; }
+        th, td { border: 1px solid #ccc; padding: 6px; vertical-align: middle; font-size: 18px; font-weight: 600; }
+        thead th { background: #eaeff5; position: sticky; top: 0; z-index: 10; height: 45px; font-size: 16px; }
+        td:first-child, th:first-child { background: #e9ecef; font-weight: bold; width: 140px; font-size: 16px; }
+        
+        /* 프로그레스 바 패널 */
+        .stopwatch-panel {
+            background-color: #222; padding: 5px; border-radius: 4px; border: 2px solid #444;
+            height: 40px; margin-top: 5px; display: flex; align-items: center; position: relative; overflow: hidden;
+        }
+        .progress-bar {
+            height: 100%; width: 0%; background-color: #0066ff; box-shadow: 0 0 10px #0066ff;
+            transition: width 0.1s linear;
+        }
+        .progress-bar.resizing { transition: none !important; }
+
+        .active-cell { background-color: #fff3cd !important; border: 3px solid #ffc107 !important; color: #d32f2f; }
+
+        .section-footer { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 50px; }
+        
+        /* 중앙 패널 (공통 영역) */
+        .footer-center { 
+            display: none; /* JS에서 제어 */
+            flex: 1; align-items: center; justify-content: center; 
+            background: #fff; border: 1px solid #ccc; border-radius: 4px; 
+            padding: 5px 10px; height: 100%; gap: 15px; 
+        }
+
+        /* [NEW] 모드별 패널 분리 */
+        #panelTestMode { display: flex; gap: 10px; align-items: center; } /* 테스트용 */
+        #panelArduinoMode { display: none; gap: 10px; align-items: center; width: 100%; justify-content: center; } /* 아두이노용 */
+
+        .input-group { display: flex; gap: 5px; align-items: center; }
+        .test-input { width: 100px; text-align: center; font-size: 18px; border: 2px solid #ddd; border-radius: 4px; padding: 5px; font-weight: bold; }
+
+        button { height: 45px; padding: 0 15px; font-size: 15px; font-weight: bold; cursor: pointer; border: 1px solid #999; background: white; border-radius: 4px; transition: all 0.2s; }
+        button:hover { background: #eee; }
+        #btnSend { background-color: #ff9800; color: white; border: none; }
+        
+        #btnManualTrigger { 
+            background-color: #607d8b; color: white; border: none; min-width: 120px; 
+            box-shadow: 0 4px #455a64; transform: translateY(0); font-size: 14px; 
+        }
+        #btnManualTrigger:active, #btnManualTrigger.remote-active { 
+            background-color: #ff5722 !important; box-shadow: 0 0 #d84315 !important; transform: translateY(4px) !important; 
+        }
+        
+        /* 아두이노 모드 상태 텍스트 */
+        .status-text {
+            font-size: 18px; font-weight: bold; color: #555;
+            display: flex; align-items: center; gap: 10px;
+        }
+        .status-dot {
+            width: 12px; height: 12px; background-color: #ccc; border-radius: 50%;
+            display: inline-block;
+        }
+        .status-dot.active { background-color: #00ff00; box-shadow: 0 0 8px #00ff00; }
+
+        /* 미니 타이머 (공통) */
+        .mini-timer {
+            font-family: 'Courier New', monospace; font-size: 20px; font-weight: bold; color: #555;
+            min-width: 70px; text-align: left;
+        }
+
+        .btn-connected { border-left: 5px solid #4CAF50 !important; color: #2e7d32 !important; background-color: white !important; }
+        .btn-disconnected { border-left: 5px solid #999 !important; color: #888 !important; background-color: #f0f0f0 !important; }
+        #btnExport { border-right: 5px solid #008CBA; }
+
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
+        .modal-window { background: white; width: 400px; padding: 20px; border-radius: 8px; display: flex; flex-direction: column; gap: 15px; }
+        .modal-header { font-size: 18px; font-weight: bold; text-align: center; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        .modal-footer { display: flex; justify-content: space-between; margin-top: 10px; }
+        .btn-ok { background-color: #007bff; color: white; border: none; width: 45%; }
+        .btn-cancel { width: 45%; }
+        .port-list { list-style: none; padding: 0; margin: 0; border: 1px solid #ddd; max-height: 200px; overflow-y: auto; }
+        .port-item { padding: 10px; cursor: pointer; border-bottom: 1px solid #eee; }
+        .port-item.selected { background-color: #007bff; color: white; }
+        .save-filename { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+    <div class="box section-graph disabled-state" id="graphArea">
+        <canvas id="myChart"></canvas>
+    </div>
+
+    <div class="box section-table disabled-state" id="tableArea">
+        <div style="font-weight:bold; font-size: 16px; margin-bottom: 5px;">:: 실시간 데이터 & 측정 상태</div>
+        <div class="table-scroll">
+            <table id="dataTable">
+                <thead><tr><th>ID</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th></tr></thead>
+                <tbody>
+                    <tr id="timeRow"><td>측정시각</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
+                    <tr id="dataRow"><td>Pulse(ms)</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="stopwatch-panel"><div id="progressBar" class="progress-bar"></div></div>
+    </div>
+
+    <div class="section-footer">
+        <div class="footer-left"><button id="btnPort" class="btn-disconnected">⚙️ 포트 연결</button></div>
+        
+        <div class="footer-center" id="footerCenter">
+            
+            <div id="panelTestMode">
+                <div class="input-group">
+                    <input type="number" class="test-input" id="singleInput" value="100" placeholder="값">
+                    <button id="btnSend">📤 전송</button>
+                </div>
+                <div style="width: 1px; height: 30px; background: #ddd; margin: 0 10px;"></div>
+                <button id="btnManualTrigger">🖱️ 꾹 누르세요</button>
+            </div>
+
+            <div id="panelArduinoMode">
+                <span class="status-text"><span class="status-dot" id="statusDot"></span> 신호 대기 중...</span>
+            </div>
+
+            <div style="width: 1px; height: 30px; background: #ddd; margin: 0 10px;"></div>
+            <span id="miniTimerDisplay" class="mini-timer">0 ms</span>
+        </div>
+
+        <div class="footer-right"><button id="btnExport">💾 로그 저장</button></div>
+    </div>
+
+    <div class="modal-overlay" id="portModal"><div class="modal-window"><div class="modal-header">포트 설정</div><ul class="port-list" id="portList"></ul><div class="modal-footer"><button class="btn-cancel" id="btnPortCancel">Cancel</button><button class="btn-ok" id="btnPortOk">OK</button></div></div></div>
+    <div class="modal-overlay" id="saveModal"><div class="modal-window"><div class="modal-header">로그 저장</div><div><label>파일 이름</label><input type="text" class="save-filename" id="fileNameInput" value="log_data"></div><div class="modal-footer"><button class="btn-cancel" id="btnSaveCancel">Cancel</button><button class="btn-ok" id="btnSaveOk">저장</button></div></div></div>
+
+    <script src="./jquery.min.js"></script>
+    <script src="./chart.min.js"></script>
+    
+    <script>
+        const ctx = document.getElementById('myChart');
+        Chart.defaults.font.size = 14; 
+        const myChart = new Chart(ctx, {
+            type: 'bar',
+            data: { labels: ['1','2','3','4','5','6','7','8','9','10'], datasets: [{ label: 'Pulse Width (ms)', data: [0,0,0,0,0,0,0,0,0,0], backgroundColor: '#4472C4' }] },
+            options: { responsive: true, maintainAspectRatio: false, animation: { duration: 0 } }
+        });
+
+        let isConnected = false; let selectedPort = null; let logBuffer = []; let eventSource = null;
+        let displayData = [0,0,0,0,0,0,0,0,0,0]; let displayTimes = ['-','-','-','-','-','-','-','-','-','-'];
+        let currentIndex = 0;
+        
+        let startTime = 0;
+        let timerInterval = null;
+        let currentMaxScale = 2000;
+        const btnTrigger = document.getElementById('btnManualTrigger');
+        const progressBar = document.getElementById('progressBar');
+        const miniTimerDisplay = document.getElementById('miniTimerDisplay');
+        const statusDot = document.getElementById('statusDot');
+
+        function toggleUI(connected) {
+            if (connected) {
+                $('#graphArea, #tableArea').removeClass('disabled-state');
+                $('#btnPort').removeClass('btn-disconnected').addClass('btn-connected').text('✅ 연결됨: ' + selectedPort);
+                $('#footerCenter').css('display', 'flex'); 
+                
+                // ★ [핵심] 모드에 따라 UI 교체
+                if(selectedPort.includes('TEST')) {
+                    $('#panelTestMode').css('display', 'flex');    // 테스트 버튼 보이기
+                    $('#panelArduinoMode').hide();                 // 대기 문구 숨기기
+                } else {
+                    $('#panelTestMode').hide();                    // 테스트 버튼 숨기기
+                    $('#panelArduinoMode').css('display', 'flex'); // 대기 문구 보이기
+                    
+                    if(eventSource) eventSource.close();
+                    eventSource = new EventSource('/api/stream');
+                    eventSource.onmessage = function(event) {
+                        try {
+                            const msg = JSON.parse(event.data);
+                            if (msg.type === 'START') {
+                                startMeasurementUI(); 
+                            } else if (msg.type === 'END') {
+                                stopMeasurementUI(msg.value); 
+                            }
+                        } catch(e) { console.error('JSON Error', e); }
+                    };
+                }
+            } else {
+                $('#graphArea, #tableArea').addClass('disabled-state');
+                $('#footerCenter').hide();
+                $('#btnPort').removeClass('btn-connected').addClass('btn-disconnected').text('⚙️ 포트 연결 (해제됨)');
+                if(eventSource) { eventSource.close(); eventSource = null; }
+            }
+        }
+
+        // ==========================================
+        // UI 제어 로직
+        // ==========================================
+        function startMeasurementUI() {
+            if (startTime !== 0) return; 
+            
+            startTime = Date.now();
+            currentMaxScale = 2000;
+            
+            // 아두이노 모드일 때 '신호 감지' 표시 (초록 점)
+            if (statusDot) statusDot.classList.add('active');
+
+            // 바 초기화
+            progressBar.classList.add('resizing');
+            progressBar.style.width = '0%';
+            void progressBar.offsetWidth; 
+            progressBar.classList.remove('resizing'); 
+            progressBar.style.backgroundColor = "#0066ff";
+            progressBar.style.boxShadow = "0 0 10px #0066ff";
+            miniTimerDisplay.style.color = "#0066ff";
+            
+            if(timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(function() {
+                const elapsed = Date.now() - startTime;
+                if (elapsed > currentMaxScale) {
+                    currentMaxScale *= 2; 
+                    progressBar.classList.add('resizing');
+                } else {
+                    progressBar.classList.remove('resizing');
+                }
+                let percent = (elapsed / currentMaxScale) * 100;
+                if (percent > 100) percent = 100;
+                progressBar.style.width = percent + '%';
+                miniTimerDisplay.innerText = elapsed + " ms";
+            }, 16);
+        }
+
+        function stopMeasurementUI(finalValue) {
+            if(timerInterval) clearInterval(timerInterval);
+            startTime = 0;
+            timerInterval = null;
+
+            if (statusDot) statusDot.classList.remove('active');
+
+            progressBar.classList.remove('resizing');
+            progressBar.style.width = '100%'; 
+            progressBar.style.backgroundColor = "#00ff00";
+            progressBar.style.boxShadow = "0 0 10px #00ff00";
+            
+            // ★ 서버에서 받은 진짜 값으로 표시
+            miniTimerDisplay.innerText = finalValue + " ms";
+            miniTimerDisplay.style.color = "#00ff00";
+
+            pushData(finalValue);
+        }
+
+        // 테스트 모드 전용 버튼 이벤트
+        btnTrigger.addEventListener('mousedown', function() {
+            if(!isConnected || !selectedPort.includes('TEST')) return;
+            startMeasurementUI();
+        });
+        function finishTriggerMouse() {
+            if (startTime === 0 || !isConnected || !selectedPort.includes('TEST')) return;
+            const duration = Date.now() - startTime;
+            stopMeasurementUI(duration);
+        }
+        btnTrigger.addEventListener('mouseup', finishTriggerMouse);
+        btnTrigger.addEventListener('mouseleave', finishTriggerMouse);
+
+        // ==========================================
+        // 기본 로직
+        // ==========================================
+        function resetUI() {
+            displayData = [0,0,0,0,0,0,0,0,0,0];
+            displayTimes = ['-','-','-','-','-','-','-','-','-','-'];
+            currentIndex = 0;
+            logBuffer = [];
+            updateGraphAndTable();
+            if(progressBar) progressBar.style.width = '0%';
+            if(miniTimerDisplay) { miniTimerDisplay.innerText = "0 ms"; miniTimerDisplay.style.color = "#555"; }
+        }
+
+        function pushData(newValue) {
+            if (currentIndex === 0) { displayData.fill(0); displayTimes.fill('-'); }
+            displayData[currentIndex] = newValue;
+            const now = new Date();
+            displayTimes[currentIndex] = now.toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            if(isConnected && selectedPort) {
+                const fullTimestamp = now.toLocaleString();
+                const tag = (selectedPort.includes('TEST')) ? 'TEST' : '';
+                logBuffer.push({ id: logBuffer.length + 1, time: fullTimestamp, value: newValue, tag: tag });
+            }
+            updateGraphAndTable();
+            currentIndex++;
+            if (currentIndex >= 10) currentIndex = 0;
+        }
+
+        function updateGraphAndTable() {
+            myChart.data.datasets[0].data = [...displayData]; myChart.update();
+            $('#timeRow td').each(function(index) { if (index > 0) { $(this).text(displayTimes[index-1]); if (index-1 === currentIndex && isConnected) $(this).addClass('active-cell'); else $(this).removeClass('active-cell'); } });
+            $('#dataRow td').each(function(index) { if (index > 0) { $(this).text(displayData[index-1]); if (index-1 === currentIndex && isConnected) $(this).addClass('active-cell'); else $(this).removeClass('active-cell'); } });
+        }
+
+        // 이벤트 핸들러
+        $('#btnPort').click(function() { if (isConnected) { if(confirm('연결을 종료하시겠습니까?')) { isConnected = false; toggleUI(false); resetUI(); } } else { $.ajax({ url: '/api/ports', method: 'GET', success: function(ports) { $('#portList').empty().append(`<li class="port-item">TEST (Virtual Mode)</li>`); ports.forEach(p => $('#portList').append(`<li class="port-item">${p}</li>`)); $('#portModal').css('display', 'flex'); }, error: function() { alert('서버 연결 실패'); } }); } });
+        $(document).on('click', '.port-item', function() { $('.port-item').removeClass('selected'); $(this).addClass('selected'); selectedPort = $(this).text(); });
+        $('#btnPortOk').click(function() { if (!selectedPort) return alert('포트 선택!'); $('#portModal').hide(); $.ajax({ url: '/api/connect', method: 'POST', contentType: 'application/json', data: JSON.stringify({ port: selectedPort }), success: function(res) { alert(res.message); resetUI(); isConnected = true; toggleUI(true); }, error: function() { alert('장치 연결 실패'); } }); });
+        $('#btnSend').click(function() { if(!isConnected) return; pushData(Number($('#singleInput').val()) || 0); });
+        $('#singleInput').keypress(function(e) { if(e.which == 13) $('#btnSend').click(); });
+        $('#btnExport').click(function() { const now = new Date(); const y = now.getFullYear(); const m = String(now.getMonth()+1).padStart(2,'0'); const d = String(now.getDate()).padStart(2,'0'); const h = String(now.getHours()).padStart(2,'0'); const min = String(now.getMinutes()).padStart(2,'0'); const s = String(now.getSeconds()).padStart(2,'0'); $('#fileNameInput').val(`log_${y}${m}${d}_${h}${min}${s}`); $('#saveModal').css('display', 'flex'); });
+        $('#btnSaveCancel').click(() => $('#saveModal').hide()); $('#btnPortCancel').click(() => $('#portModal').hide());
+        $('#btnSaveOk').click(function() { const fileName = $('#fileNameInput').val() || 'log_data'; if (logBuffer.length === 0) return alert("저장할 데이터가 없습니다."); let csv = "No,Time,Pulse(ms),Mode\n"; logBuffer.forEach(r => { csv += `${r.id},${r.time},${r.value},${r.tag}\n`; }); const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = fileName + ".csv"; link.click(); $('#saveModal').hide(); });
+    </script>
+</body>
+</html>
